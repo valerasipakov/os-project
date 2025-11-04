@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Подтянуть окружение из config/app.env, если DATA_ROOT не задан
 if [[ -z "${DATA_ROOT:-}" ]]; then
   if [[ -f "$PROJECT_ROOT/config/app.env" ]]; then
     set -a
@@ -12,6 +13,7 @@ if [[ -z "${DATA_ROOT:-}" ]]; then
   fi
 fi
 
+# Нормализовать DATA_ROOT и проверить существование
 if [[ -n "${DATA_ROOT:-}" ]]; then
   if [[ -d "$DATA_ROOT" ]]; then
     DATA_ROOT="$(cd "$DATA_ROOT" && pwd)"
@@ -22,29 +24,36 @@ if [[ -n "${DATA_ROOT:-}" ]]; then
 fi
 export DATA_ROOT
 
+# Библиотеки
 source "$SCRIPT_DIR/lib/io.sh"
 source "$SCRIPT_DIR/lib/paths.sh"
-source "$SCRIPT_DIR/lib/parser.sh" 2>/dev/null || true
+# ВАЖНО: parser.sh даёт parse_args/trim и переменные GROUP/SUBJECT/TEST_NAME/ACTION/SHOW_HELP
+source "$SCRIPT_DIR/lib/parser.sh"
 source "$SCRIPT_DIR/lib/stats.sh"
 
+# Разобрать флаги (поддерживаются --flag=value и --flag value, с триммингом)
+parse_args "$@"
 
-GROUP=""
-SUBJECT=""
-TEST_NAME=""
-ACTION="both"
+# Показать помощь и выйти, если запросили
+if [[ "${SHOW_HELP:-0}" -eq 1 ]]; then
+  print_usage
+  exit 0
+fi
 
-for arg in "$@"; do
-  case "$arg" in
-    --group=*) GROUP="${arg#*=}" ;;
-    --subject=*) SUBJECT="${arg#*=}" ;;
-    --test=*) TEST_NAME="${arg#*=}" ;;
-    --action=*) ACTION="${arg#*=}" ;;
-  esac
-done
+# Фоллбэки: если флаг не задан — спросить интерактивно (и тоже обрезать пробелы)
+[[ -z "${GROUP:-}" ]]   && GROUP="$(trim "$(ask_group)")"
+[[ -z "${SUBJECT:-}" ]] && SUBJECT="$(trim "$(ask_subject)")"
+[[ -z "${TEST_NAME:-}" ]] && TEST_NAME="$(trim "$(ask_test "${SUBJECT}")")"
+ACTION="${ACTION:-both}"
 
-[[ -z "${GROUP}" ]] && GROUP="$(ask_group)"
-[[ -z "${SUBJECT}" ]] && SUBJECT="$(ask_subject)"
-[[ -z "${TEST_NAME}" ]] && TEST_NAME="$(ask_test "${SUBJECT}")"
+# (опционально) валидация ACTION
+case "${ACTION}" in
+  both|max-correct|max-wrong) ;;
+  *)
+    echo "Недопустимое значение --action: ${ACTION}. Разрешено: both | max-correct | max-wrong" >&2
+    exit 1
+    ;;
+esac
 
 TEST_FILE="$(get_tests_file "${SUBJECT}" "${TEST_NAME}")"
 TOTAL_QUESTIONS="$(get_total_questions "${SUBJECT}")"
@@ -78,7 +87,7 @@ case "${ACTION}" in
   max-wrong)
     echo "Студент(ы) с максимальным числом неправильных (${MAX_WRONG}): ${MAX_WRONG_NAMES}"
     ;;
-  both|*)
+  both)
     echo "Студент(ы) с максимальным числом правильных (${MAX_CORRECT}): ${MAX_CORRECT_NAMES}"
     echo "Студент(ы) с максимальным числом неправильных (${MAX_WRONG}): ${MAX_WRONG_NAMES}"
     ;;

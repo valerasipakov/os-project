@@ -17,6 +17,7 @@
 │       └── lib/
 │           ├── io.sh
 │           ├── paths.sh
+│           ├── parser.sh
 │           ├── stats.sh
 └── src/tests/unit_tests/
     ├── conftest.py
@@ -32,6 +33,7 @@
 - `src/scripts/main.sh` — orchestration: загрузка конфигурации, нормализация `DATA_ROOT`, ввод параметров, валидации, запуск вычислений и форматирование результата.
 - `src/scripts/lib/io.sh` — интерактивный ввод. Меню и подсказки в `stderr`, значения в `stdout`.
 - `src/scripts/lib/paths.sh` — слой путей и данных. Использует **только** `DATA_ROOT` для вычисления `LAB_ROOT`. Не применяет эвристики.
+- `src/scripts/lib/parser.sh` — парсинг флагов.
 - `src/scripts/lib/stats.sh` — бизнес‑логика:
   - `group_exists` — проверка наличия группы через точное сравнение первого поля (awk).
   - `list_groups` — уникальные группы из файла.
