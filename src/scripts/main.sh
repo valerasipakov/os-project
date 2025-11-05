@@ -3,8 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+export PROJECT_ROOT
 
-# Подтянуть окружение из config/app.env, если DATA_ROOT не задан
 if [[ -z "${DATA_ROOT:-}" ]]; then
   if [[ -f "$PROJECT_ROOT/config/app.env" ]]; then
     set -a
@@ -13,7 +13,6 @@ if [[ -z "${DATA_ROOT:-}" ]]; then
   fi
 fi
 
-# Нормализовать DATA_ROOT и проверить существование
 if [[ -n "${DATA_ROOT:-}" ]]; then
   if [[ -d "$DATA_ROOT" ]]; then
     DATA_ROOT="$(cd "$DATA_ROOT" && pwd)"
@@ -24,71 +23,122 @@ if [[ -n "${DATA_ROOT:-}" ]]; then
 fi
 export DATA_ROOT
 
-# Библиотеки
 source "$SCRIPT_DIR/lib/io.sh"
 source "$SCRIPT_DIR/lib/paths.sh"
-# ВАЖНО: parser.sh даёт parse_args/trim и переменные GROUP/SUBJECT/TEST_NAME/ACTION/SHOW_HELP
 source "$SCRIPT_DIR/lib/parser.sh"
 source "$SCRIPT_DIR/lib/stats.sh"
 
-# Разобрать флаги (поддерживаются --flag=value и --flag value, с триммингом)
 parse_args "$@"
 
-# Показать помощь и выйти, если запросили
 if [[ "${SHOW_HELP:-0}" -eq 1 ]]; then
   print_usage
   exit 0
 fi
 
-# Фоллбэки: если флаг не задан — спросить интерактивно (и тоже обрезать пробелы)
-[[ -z "${GROUP:-}" ]]   && GROUP="$(trim "$(ask_group)")"
+case "${ACTION:-}" in
+  view-dossier|add-dossier|average-grade)
+    if [[ -z "${STUDENT:-}" ]]; then
+      echo "Требуется --student для действия ${ACTION}" >&2
+      exit 1
+    fi
+    if [[ -z "${SUBJECT:-}" ]]; then
+      echo "Требуется --subject для действия ${ACTION}" >&2
+      exit 1
+    fi
+    case "${ACTION}" in
+      view-dossier)
+        if ! student_exists_in_subject "${SUBJECT}" "${STUDENT}"; then
+          echo "Студент не найден" >&2
+          exit 1
+        fi
+        dossier_file="$(get_dossier_file "${SUBJECT}" "${STUDENT}")"
+        if [[ ! -f "$dossier_file" ]]; then
+          echo "Досье не найдено"
+          exit 0
+        fi
+        if [[ ! -s "$dossier_file" ]]; then
+          echo "Досье пустое"
+          exit 0
+        fi
+        cat "$dossier_file"
+        exit 0
+        ;;
+      add-dossier)
+        # Разрешаем создавать/обновлять досье даже если студент ещё не встречался в тестах
+        if [[ -z "${PHRASE:-}" ]]; then
+          echo "Для add-dossier требуется --phrase" >&2
+          exit 1
+        fi
+        dossier_file="$(get_dossier_file "${SUBJECT}" "${STUDENT}")"
+        if [[ ! -f "$dossier_file" ]]; then
+          {
+            echo "Фамилия: ${STUDENT}"
+            echo "Предмет: ${SUBJECT}"
+            echo "Дата создания: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "Последнее обновление: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo
+            echo "ФРАЗЫ:"
+          } >"$dossier_file"
+        else
+          tmpf="$(mktemp)"
+          awk -v now="$(date '+%Y-%m-%d %H:%M:%S')" \
+              '{if ($0 ~ /^Последнее обновление:/) {print "Последнее обновление: " now} else {print $0}}' \
+              "$dossier_file" > "$tmpf" && mv "$tmpf" "$dossier_file"
+        fi
+        next_n="$(awk '/^[0-9]+\./{c++} END{print c+1}' "$dossier_file")"
+        echo "${next_n}. ${PHRASE}" >> "$dossier_file"
+        echo "OK"
+        exit 0
+        ;;
+      average-grade)
+        avg="$(average_grade_for_student "${SUBJECT}" "${STUDENT}")"
+        if [[ "$avg" == "NOT_FOUND" ]]; then
+          echo "Студент не найден"
+          exit 0
+        fi
+        echo "Средняя оценка по предмету (${SUBJECT}) для ${STUDENT}: ${avg}"
+        exit 0
+        ;;
+    esac
+    ;;
+esac
+
+[[ -z "${GROUP:-}"   ]] && GROUP="$(trim "$(ask_group)")"
 [[ -z "${SUBJECT:-}" ]] && SUBJECT="$(trim "$(ask_subject)")"
 [[ -z "${TEST_NAME:-}" ]] && TEST_NAME="$(trim "$(ask_test "${SUBJECT}")")"
 ACTION="${ACTION:-both}"
 
-# (опционально) валидация ACTION
 case "${ACTION}" in
   both|max-correct|max-wrong) ;;
   *)
-    echo "Недопустимое значение --action: ${ACTION}. Разрешено: both | max-correct | max-wrong" >&2
+    echo "Недопустимое значение --action: ${ACTION}. Разрешено: both | max-correct | max-wrong | view-dossier | add-dossier | average-grade" >&2
     exit 1
     ;;
 esac
 
-TEST_FILE="$(get_tests_file "${SUBJECT}" "${TEST_NAME}")"
-TOTAL_QUESTIONS="$(get_total_questions "${SUBJECT}")"
-
-if [[ ! -f "${TEST_FILE}" ]]; then
-  printf "Файл теста не найден: %s\n" "${TEST_FILE}" >&2
+test_file="$(get_test_file "$SUBJECT" "$TEST_NAME")"
+if [[ ! -f "$test_file" ]]; then
+  echo "Файл теста не найден: $test_file" >&2
   exit 1
 fi
 
-if ! group_exists "${TEST_FILE}" "${GROUP}"; then
-  printf "Группа не найдена: %s\n" "${GROUP}" >&2
-  printf "Доступные группы в тесте %s/%s:\n" "${SUBJECT}" "${TEST_NAME}" >&2
-  list_groups "${TEST_FILE}" >&2
+if ! group_exists "$test_file" "$GROUP"; then
+  echo "Группа '${GROUP}' не найдена в тесте '${TEST_NAME}'" >&2
   exit 1
 fi
 
-RESULT="$(find_max_for_group "${TEST_FILE}" "${GROUP}" "${TOTAL_QUESTIONS}")"
-
-MAX_CORRECT="$(echo "${RESULT}" | grep '^MAX_CORRECT=' | cut -d'=' -f2)"
-MAX_CORRECT_NAMES="$(echo "${RESULT}" | grep '^MAX_CORRECT_NAMES=' | cut -d'=' -f2-)"
-MAX_WRONG="$(echo "${RESULT}" | grep '^MAX_WRONG=' | cut -d'=' -f2)"
-MAX_WRONG_NAMES="$(echo "${RESULT}" | grep '^MAX_WRONG_NAMES=' | cut -d'=' -f2-)"
-
-echo "Группа: ${GROUP}"
-echo "Предмет: ${SUBJECT}"
-echo "Тест: ${TEST_NAME}"
-case "${ACTION}" in
+case "$ACTION" in
   max-correct)
-    echo "Студент(ы) с максимальным числом правильных (${MAX_CORRECT}): ${MAX_CORRECT_NAMES}"
+    max_correct_names "$test_file" "$GROUP" | sort
     ;;
   max-wrong)
-    echo "Студент(ы) с максимальным числом неправильных (${MAX_WRONG}): ${MAX_WRONG_NAMES}"
+    max_wrong_names "$test_file" "$GROUP" "$SUBJECT" | sort
     ;;
   both)
-    echo "Студент(ы) с максимальным числом правильных (${MAX_CORRECT}): ${MAX_CORRECT_NAMES}"
-    echo "Студент(ы) с максимальным числом неправильных (${MAX_WRONG}): ${MAX_WRONG_NAMES}"
+    echo "=== MAX CORRECT ==="
+    max_correct_names "$test_file" "$GROUP" | sort
+    echo
+    echo "=== MAX WRONG ==="
+    max_wrong_names "$test_file" "$GROUP" "$SUBJECT" | sort
     ;;
 esac

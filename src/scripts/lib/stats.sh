@@ -6,46 +6,63 @@ group_exists() {
   awk -F';' -v g="$group" 'BEGIN{found=0} $1==g{found=1; exit} END{exit(found?0:1)}' "$file"
 }
 
-list_groups() {
-  local file="$1"
-  cut -d';' -f1 "$file" | sed '/^$/d' | sort -u
+max_correct_names() {
+  local file="$1" group="$2"
+  awk -F';' -v g="$group" '
+    $1==g {
+      name=$2; corr=$4+0
+      if (corr>max) {max=corr; delete best}
+      if (corr==max) {best[name]=1}
+    }
+    END { for (n in best) print n }
+  ' "$file"
 }
 
-find_max_for_group() {
-  local file="$1"
-  local group="$2"
-  local total="$3"
+max_wrong_names() {
+  local file="$1" group="$2" subject="$3" total
+  total="$(get_total_questions "$subject")"
+  awk -F';' -v g="$group" -v T="$total" '
+    $1==g {
+      name=$2; corr=$4+0
+      wrong = (T>0 ? (T-corr) : -corr)
+      if (wrong>max) {max=wrong; delete worst}
+      if (wrong==max) {worst[name]=1}
+    }
+    END { for (n in worst) print n }
+  ' "$file"
+}
 
-  local max_correct=-1
-  local max_wrong=-1
-  local max_correct_names=()
-  local max_wrong_names=()
+student_exists_in_subject() {
+  local subject="$1" student="$2"
+  local dir
+  dir="$(get_subject_tests_dir "$subject")"
+  [[ -d "$dir" ]] || return 1
+  local f
+  for f in "$dir"/*; do
+    [[ -f "$f" ]] || continue
+    awk -F';' -v s="$student" '$2==s{found=1; exit} END{exit(found?0:1)}' "$f" && return 0
+  done
+  return 1
+}
 
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    local g
-    g=$(echo "$line" | cut -d';' -f1)
-    [[ "$g" != "$group" ]] && continue
-    local name correct
-    name=$(echo "$line" | cut -d';' -f2)
-    correct=$(echo "$line" | cut -d';' -f4)
-    if (( correct > max_correct )); then
-      max_correct=$correct
-      max_correct_names=("$name")
-    elif (( correct == max_correct )); then
-      max_correct_names+=("$name")
-    fi
-    local wrong=$(( total - correct ))
-    if (( wrong > max_wrong )); then
-      max_wrong=$wrong
-      max_wrong_names=("$name")
-    elif (( wrong == max_wrong )); then
-      max_wrong_names+=("$name")
-    fi
-  done < "$file"
-
-  echo "MAX_CORRECT=${max_correct}"
-  echo "MAX_CORRECT_NAMES=${max_correct_names[*]}"
-  echo "MAX_WRONG=${max_wrong}"
-  echo "MAX_WRONG_NAMES=${max_wrong_names[*]}"
+average_grade_for_student() {
+  local subject="$1" student="$2"
+  local dir
+  dir="$(get_subject_tests_dir "$subject")"
+  local sum=0 cnt=0 f
+  for f in "$dir"/*; do
+    [[ -f "$f" ]] || continue
+    while IFS=';' read -r _g name _date _correct grade; do
+      [[ "$name" == "$student" ]] || continue
+      if [[ -n "$grade" ]]; then
+        sum=$((sum + grade))
+        cnt=$((cnt + 1))
+      fi
+    done < "$f"
+  done
+  if (( cnt == 0 )); then
+    echo "NOT_FOUND"
+  else
+    awk -v s="$sum" -v c="$cnt" 'BEGIN{printf("%.2f", s/c)}'
+  fi
 }
