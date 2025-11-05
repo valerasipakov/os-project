@@ -66,3 +66,26 @@ average_grade_for_student() {
     awk -v s="$sum" -v c="$cnt" 'BEGIN{printf("%.2f", s/c)}'
   fi
 }
+
+student_exists_in_db() {
+  local student="$1"
+  local base_dir="${LAB_ROOT}/students"
+
+  if [[ -d "${base_dir}/groups" ]]; then
+    local gf
+    for gf in "${base_dir}/groups"/*; do
+      [[ -f "$gf" ]] || continue
+      awk -v s="$student" 'BEGIN{f=0} $0==s{f=1; exit} END{exit(f?0:1)}' "$gf" && return 0
+    done
+  fi
+
+  if [[ -d "${base_dir}/general/notes" ]]; then
+    local nf
+    for nf in "${base_dir}/general/notes"/*.log; do
+      [[ -f "$nf" ]] || continue
+      awk -v s="$student" 'BEGIN{f=0} $0==s{f=1; exit} END{exit(f?0:1)}' "$nf" && return 0
+    done
+  fi
+
+  return 1
+}

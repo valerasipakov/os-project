@@ -35,12 +35,10 @@ if [[ "${SHOW_HELP:-0}" -eq 1 ]]; then
   exit 0
 fi
 
-# Если действие не задано флагом, спросим у пользователя интерактивно
 if [[ -z "${ACTION:-}" ]]; then
   ACTION="$(trim "$(ask_action)")"
 fi
 
-# Для специальных действий запросим недостающие параметры интерактивно
 case "${ACTION:-}" in
   view-dossier|add-dossier|average-grade)
     [[ -z "${SUBJECT:-}" ]] && SUBJECT="$(trim "$(ask_subject)")"
@@ -80,9 +78,12 @@ case "${ACTION:-}" in
         exit 0
         ;;
       add-dossier)
-        # Разрешаем создавать/обновлять досье даже если студент ещё не встречался в тестах
         if [[ -z "${PHRASE:-}" ]]; then
           echo "Для add-dossier требуется --phrase" >&2
+          exit 1
+        fi
+        if ! student_exists_in_db "${STUDENT}"; then
+          echo "Студент не найден" >&2
           exit 1
         fi
         dossier_file="$(get_dossier_file "${SUBJECT}" "${STUDENT}")"
