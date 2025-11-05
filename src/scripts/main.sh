@@ -35,6 +35,22 @@ if [[ "${SHOW_HELP:-0}" -eq 1 ]]; then
   exit 0
 fi
 
+# Если действие не задано флагом, спросим у пользователя интерактивно
+if [[ -z "${ACTION:-}" ]]; then
+  ACTION="$(trim "$(ask_action)")"
+fi
+
+# Для специальных действий запросим недостающие параметры интерактивно
+case "${ACTION:-}" in
+  view-dossier|add-dossier|average-grade)
+    [[ -z "${SUBJECT:-}" ]] && SUBJECT="$(trim "$(ask_subject)")"
+    [[ -z "${STUDENT:-}" ]] && STUDENT="$(trim "$(ask_student)")"
+    if [[ "$ACTION" == "add-dossier" && -z "${PHRASE:-}" ]]; then
+      PHRASE="$(trim "$(ask_phrase)")"
+    fi
+    ;;
+esac
+
 case "${ACTION:-}" in
   view-dossier|add-dossier|average-grade)
     if [[ -z "${STUDENT:-}" ]]; then
