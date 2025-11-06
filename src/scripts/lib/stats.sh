@@ -1,91 +1,119 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-group_exists() {
-  local file="$1"
-  local group="$2"
-  awk -F';' -v g="$group" 'BEGIN{found=0} $1==g{found=1; exit} END{exit(found?0:1)}' "$file"
-}
-
-max_correct_names() {
-  local file="$1" group="$2"
+max_correct_names_one_file() {
+  local subject="$1" group="$2" test_file="$3"
   awk -F';' -v g="$group" '
     $1==g {
-      name=$2; corr=$4+0
-      if (corr>max) {max=corr; delete best}
-      if (corr==max) {best[name]=1}
+      corr[$2]+=($4+0)
+      if (corr[$2]>max) max=corr[$2]
     }
-    END { for (n in best) print n }
-  ' "$file"
+    END {
+      for(n in corr) if (corr[n]==max) printf "%s (%d)\n", n, corr[n]
+    }
+  ' "$test_file"
 }
 
-max_wrong_names() {
-  local file="$1" group="$2" subject="$3" total
+max_wrong_names_one_file() {
+  local subject="$1" group="$2" test_file="$3" total
   total="$(get_total_questions "$subject")"
   awk -F';' -v g="$group" -v T="$total" '
     $1==g {
-      name=$2; corr=$4+0
-      wrong = (T>0 ? (T-corr) : -corr)
-      if (wrong>max) {max=wrong; delete worst}
-      if (wrong==max) {worst[name]=1}
+      wrong[$2]+= (T>0 ? (T-($4+0)) : -($4+0))
+      if (wrong[$2]>max) max=wrong[$2]
     }
-    END { for (n in worst) print n }
-  ' "$file"
+    END {
+      for(n in wrong) if (wrong[n]==max) print n
+    }
+  ' "$test_file"
 }
 
-student_exists_in_subject() {
-  local subject="$1" student="$2"
+max_correct_value_one_file() {
+  local subject="$1" group="$2" test_file="$3"
+  awk -F';' -v g="$group" '
+    $1==g { corr[$2]+=($4+0) }
+    END {
+      for(n in corr) if (corr[n]>max) max=corr[n]
+      print (max+0)
+    }
+  ' "$test_file"
+}
+
+max_wrong_value_one_file() {
+  local subject="$1" group="$2" test_file="$3" total
+  total="$(get_total_questions "$subject")"
+  awk -F';' -v g="$group" -v T="$total" '
+    $1==g { wrong[$2]+= (T>0 ? (T-($4+0)) : -($4+0)) }
+    END {
+      for(n in wrong) if (wrong[n]>max) max=wrong[n]
+      print (max+0)
+    }
+  ' "$test_file"
+}
+
+max_correct_names_all_tests() {
+  local subject="$1" group="$2"
+  local dir
+  dir="$(get_subject_tests_dir "$subject")"
+  awk -F';' -v g="$group" '
+    $1==g { corr[$2]+=($4+0) }
+    END {
+      for(n in corr) if (corr[n]>max) max=corr[n]
+      for(n in corr) if (corr[n]==max) printf "%s (%d)\n", n, corr[n]
+    }
+  ' "$dir"/*
+}
+
+max_wrong_names_all_tests() {
+  local subject="$1" group="$2" total
+  local dir
+  dir="$(get_subject_tests_dir "$subject")"
+  total="$(get_total_questions "$subject")"
+  awk -F';' -v g="$group" -v T="$total" '
+    $1==g { wrong[$2]+= (T>0 ? (T-($4+0)) : -($4+0)) }
+    END {
+      for(n in wrong) if (wrong[n]>max) max=wrong[n]
+      for(n in wrong) if (wrong[n]==max) print n
+    }
+  ' "$dir"/*
+}
+
+group_exists_in_subject() {
+  local subject="$1" group="$2"
   local dir
   dir="$(get_subject_tests_dir "$subject")"
   [[ -d "$dir" ]] || return 1
   local f
   for f in "$dir"/*; do
     [[ -f "$f" ]] || continue
-    awk -F';' -v s="$student" '$2==s{found=1; exit} END{exit(found?0:1)}' "$f" && return 0
+    awk -F';' -v g="$group" '$1==g{found=1; exit} END{exit(found?0:1)}' "$f" && return 0
   done
   return 1
 }
 
-average_grade_for_student() {
-  local subject="$1" student="$2"
+max_correct_value_all_tests() {
+  local subject="$1" group="$2"
   local dir
   dir="$(get_subject_tests_dir "$subject")"
-  local sum=0 cnt=0 f
-  for f in "$dir"/*; do
-    [[ -f "$f" ]] || continue
-    while IFS=';' read -r _g name _date _correct grade; do
-      [[ "$name" == "$student" ]] || continue
-      if [[ -n "$grade" ]]; then
-        sum=$((sum + grade))
-        cnt=$((cnt + 1))
-      fi
-    done < "$f"
-  done
-  if (( cnt == 0 )); then
-    echo "NOT_FOUND"
-  else
-    awk -v s="$sum" -v c="$cnt" 'BEGIN{printf("%.2f", s/c)}'
-  fi
+  awk -F';' -v g="$group" '
+    $1==g { corr[$2] += ($4+0) }
+    END {
+      for (n in corr) if (corr[n] > max) max = corr[n]
+      print (max+0)
+    }
+  ' "$dir"/*
 }
 
-student_exists_in_db() {
-  local student="$1"
-  local base_dir="${LAB_ROOT}/students"
-
-  if [[ -d "${base_dir}/groups" ]]; then
-    local gf
-    for gf in "${base_dir}/groups"/*; do
-      [[ -f "$gf" ]] || continue
-      awk -v s="$student" 'BEGIN{f=0} $0==s{f=1; exit} END{exit(f?0:1)}' "$gf" && return 0
-    done
-  fi
-
-  if [[ -d "${base_dir}/general/notes" ]]; then
-    local nf
-    for nf in "${base_dir}/general/notes"/*.log; do
-      [[ -f "$nf" ]] || continue
-      awk -v s="$student" 'BEGIN{f=0} $0==s{f=1; exit} END{exit(f?0:1)}' "$nf" && return 0
-    done
-  fi
-
-  return 1
+max_wrong_value_all_tests() {
+  local subject="$1" group="$2" total
+  local dir
+  dir="$(get_subject_tests_dir "$subject")"
+  total="$(get_total_questions "$subject")"
+  awk -F';' -v g="$group" -v T="$total" '
+    $1==g { wrong[$2] += (T>0 ? (T-($4+0)) : -($4+0)) }
+    END {
+      for (n in wrong) if (wrong[n] > max) max = wrong[n]
+      print (max+0)
+    }
+  ' "$dir"/*
 }
