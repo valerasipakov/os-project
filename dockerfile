@@ -9,7 +9,6 @@ WORKDIR /app
 COPY src/ src/
 COPY config/ config/
 
-# сделать все *.sh исполняемыми
 RUN find src/scripts -type f -name "*.sh" -exec chmod +x {} +
 
 RUN pip install --no-cache-dir pytest

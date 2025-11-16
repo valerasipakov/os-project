@@ -36,15 +36,15 @@ max_wrong_names_one_file() {
   local subject="$1"
   local group="$2"
   local file="$3"
-  awk -F';' -v g="$group" '
+  local total
+  total="$(get_total_questions "$subject")"
+  awk -F';' -v g="$group" -v total="$total" '
     $1 == g {
       c = ($4 + 0)
-      if (c > max_q) max_q = c
       corr[$2] += c
       cnt[$2]++
     }
     END {
-      total = max_q
       max = 0
       for (s in corr) {
         wrong = cnt[s] * total - corr[s]
@@ -60,15 +60,15 @@ max_wrong_value_one_file() {
   local subject="$1"
   local group="$2"
   local file="$3"
-  awk -F';' -v g="$group" '
+  local total
+  total="$(get_total_questions "$subject")"
+  awk -F';' -v g="$group" -v total="$total" '
     $1 == g {
       c = ($4 + 0)
-      if (c > max_q) max_q = c
       corr[$2] += c
       cnt[$2]++
     }
     END {
-      total = max_q
       max = 0
       for (s in corr) {
         wrong = cnt[s] * total - corr[s]
@@ -129,15 +129,15 @@ max_wrong_names_all_tests() {
   local group="$2"
   local dir
   dir="$(get_subject_tests_dir "$subject")"
-  awk -F';' -v g="$group" '
+  local total
+  total="$(get_total_questions "$subject")"
+  awk -F';' -v g="$group" -v total="$total" '
     $1 == g {
       c = ($4 + 0)
-      if (c > max_q) max_q = c
       corr[$2] += c
       cnt[$2]++
     }
     END {
-      total = max_q
       max = 0
       for (s in corr) {
         wrong = cnt[s] * total - corr[s]
@@ -154,15 +154,15 @@ max_wrong_value_all_tests() {
   local group="$2"
   local dir
   dir="$(get_subject_tests_dir "$subject")"
-  awk -F';' -v g="$group" '
+  local total
+  total="$(get_total_questions "$subject")"
+  awk -F';' -v g="$group" -v total="$total" '
     $1 == g {
       c = ($4 + 0)
-      if (c > max_q) max_q = c
       corr[$2] += c
       cnt[$2]++
     }
     END {
-      total = max_q
       max = 0
       for (s in corr) {
         wrong = cnt[s] * total - corr[s]

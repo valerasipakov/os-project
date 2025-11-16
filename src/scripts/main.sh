@@ -35,7 +35,7 @@ trim() {
 }
 
 usage() {
-  echo "Использование: $0 --group=ГРУППА --subject=ПРЕДМЕТ --action=both|max-correct|max-wrong [--test=ТЕСТ]"
+  echo "Использование: $0 --group=ГРУППА --subject=ПРЕДМЕТ --action=both|max-correct|max-wrong [--test=ТЕСТ]" >&2
 }
 
 GROUP=""
@@ -78,7 +78,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     *)
-      echo "Неизвестный аргумент: $1"
+      echo "Неизвестный аргумент: $1" >&2
       usage
       exit 1
       ;;
@@ -92,19 +92,19 @@ TEST_NAME="$(trim "$TEST_NAME")"
 ACTION="$(trim "$ACTION")"
 
 if [[ -z "$GROUP" ]]; then
-  echo "Необходимо указать флаг --group"
+  echo "Необходимо указать флаг --group" >&2
   usage
   exit 1
 fi
 
 if [[ -z "$SUBJECT" ]]; then
-  echo "Необходимо указать флаг --subject"
+  echo "Необходимо указать флаг --subject" >&2
   usage
   exit 1
 fi
 
 if [[ -z "$ACTION" ]]; then
-  echo "Необходимо указать флаг --action"
+  echo "Необходимо указать флаг --action" >&2
   usage
   exit 1
 fi
@@ -113,7 +113,7 @@ case "$ACTION" in
   both|max-correct|max-wrong)
     ;;
   *)
-    echo "Некорректное значение --action: $ACTION"
+    echo "Некорректное значение --action: $ACTION" >&2
     usage
     exit 1
     ;;
@@ -122,12 +122,7 @@ esac
 SUBJECT_DIR="$(get_subject_tests_dir "$SUBJECT")"
 
 if [[ ! -d "$SUBJECT_DIR" ]]; then
-  echo "Предмет не найден: $SUBJECT"
-  exit 1
-fi
-
-if ! group_exists_in_subject "$SUBJECT" "$GROUP"; then
-  echo "Группа не найдена: $GROUP"
+  echo "Предмет не найден: $SUBJECT" >&2
   exit 1
 fi
 
@@ -140,10 +135,26 @@ if [[ -n "$TEST_NAME" ]]; then
   elif [[ -f "$SUBJECT_DIR/$TEST_NAME.csv" ]]; then
     TEST_FILE="$SUBJECT_DIR/$TEST_NAME.csv"
   else
-    echo "Тест не найден: $TEST_NAME"
+    echo "Тест не найден: $TEST_NAME" >&2
     exit 1
   fi
   TEST_DESC="по тесту $TEST_NAME"
+fi
+
+if [[ -n "$TEST_FILE" ]]; then
+  if ! awk -F';' -v g="$GROUP" '$1 == g { found=1; exit 0 } END { if (!found) exit 1 }' "$TEST_FILE" 2>/dev/null; then
+    echo "Группа не найдена: $GROUP" >&2
+    echo "Доступные группы в тесте $TEST_NAME:" >&2
+    awk -F';' '{print $1}' "$TEST_FILE" 2>/dev/null | sort -u >&2
+    exit 1
+  fi
+else
+  if ! group_exists_in_subject "$SUBJECT" "$GROUP"; then
+    echo "Группа не найдена: $GROUP" >&2
+    echo "Доступные группы по предмету $SUBJECT:" >&2
+    awk -F';' '{print $1}' "$SUBJECT_DIR"/TEST-* 2>/dev/null | sort -u >&2
+    exit 1
+  fi
 fi
 
 if [[ -n "$TEST_FILE" ]]; then

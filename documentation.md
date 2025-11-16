@@ -222,3 +222,22 @@ avg = sum(оценок) / count(оценок)
 - Путь к данным задаётся через:
   - переменную окружения `DATA_ROOT`, либо
   - файл `config/app.env` (по умолчанию указывает на `data/labfiles-25`).
+
+
+### Unit-тесты
+
+Запускаются через pytest или docker
+
+Через pytest:
+```text
+pytest
+```
+
+Через docker:
+
+```text
+docker build .
+docker run --rm --name mytests-run mytests
+```
+
+В случае успеха будет выведено TESTS PASSED, иначе TESTS FAILED
