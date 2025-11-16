@@ -35,42 +35,42 @@ trim() {
 }
 
 usage() {
-  echo "Использование: $0 [--group=ГРУППА] [--subject=ПРЕДМЕТ] [--test=ТЕСТ] [--action=both|max-correct|max-wrong]"
+  echo "Использование: $0 --group=ГРУППА --subject=ПРЕДМЕТ --action=both|max-correct|max-wrong [--test=ТЕСТ]"
 }
 
 GROUP=""
 SUBJECT=""
 TEST_NAME=""
-ACTION="both"
+ACTION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --group=*)
-      GROUP="${1#*=}"
+      GROUP="$(trim "${1#*=}")"
       ;;
     --group)
-      GROUP="$2"
+      GROUP="$(trim "$2")"
       shift
       ;;
     --subject=*)
-      SUBJECT="${1#*=}"
+      SUBJECT="$(trim "${1#*=}")"
       ;;
     --subject)
-      SUBJECT="$2"
+      SUBJECT="$(trim "$2")"
       shift
       ;;
     --test=*)
-      TEST_NAME="${1#*=}"
+      TEST_NAME="$(trim "${1#*=}")"
       ;;
     --test)
-      TEST_NAME="$2"
+      TEST_NAME="$(trim "$2")"
       shift
       ;;
     --action=*)
-      ACTION="${1#*=}"
+      ACTION="$(trim "${1#*=}")"
       ;;
     --action)
-      ACTION="$2"
+      ACTION="$(trim "$2")"
       shift
       ;;
     -h|--help)
@@ -135,7 +135,6 @@ TEST_DESC="по всем тестам"
 TEST_FILE=""
 
 if [[ -n "$TEST_NAME" ]]; then
-  TEST_NAME="$(trim "$TEST_NAME")"
   if [[ -f "$SUBJECT_DIR/$TEST_NAME" ]]; then
     TEST_FILE="$SUBJECT_DIR/$TEST_NAME"
   elif [[ -f "$SUBJECT_DIR/$TEST_NAME.csv" ]]; then
