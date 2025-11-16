@@ -1,119 +1,174 @@
 #!/usr/bin/env bash
-set -euo pipefail
 
 max_correct_names_one_file() {
-  local subject="$1" group="$2" test_file="$3"
+  local subject="$1"
+  local group="$2"
+  local file="$3"
   awk -F';' -v g="$group" '
-    $1==g {
-      corr[$2]+=($4+0)
-      if (corr[$2]>max) max=corr[$2]
+    $1 == g && ($5 + 0) > 2 {
+      a[$2] += ($4 + 0)
     }
     END {
-      for(n in corr) if (corr[n]==max) printf "%s (%d)\n", n, corr[n]
+      max = 0
+      for (s in a) if (a[s] > max) max = a[s]
+      for (s in a) if (a[s] == max) printf "%s ", s
     }
-  ' "$test_file"
-}
-
-max_wrong_names_one_file() {
-  local subject="$1" group="$2" test_file="$3" total
-  total="$(get_total_questions "$subject")"
-  awk -F';' -v g="$group" -v T="$total" '
-    $1==g {
-      wrong[$2]+= (T>0 ? (T-($4+0)) : -($4+0))
-      if (wrong[$2]>max) max=wrong[$2]
-    }
-    END {
-      for(n in wrong) if (wrong[n]==max) print n
-    }
-  ' "$test_file"
+  ' "$file" | sed 's/ $//'
 }
 
 max_correct_value_one_file() {
-  local subject="$1" group="$2" test_file="$3"
+  local subject="$1"
+  local group="$2"
+  local file="$3"
   awk -F';' -v g="$group" '
-    $1==g { corr[$2]+=($4+0) }
-    END {
-      for(n in corr) if (corr[n]>max) max=corr[n]
-      print (max+0)
+    $1 == g && ($5 + 0) > 2 {
+      a[$2] += ($4 + 0)
     }
-  ' "$test_file"
+    END {
+      max = 0
+      for (s in a) if (a[s] > max) max = a[s]
+      print max
+    }
+  ' "$file"
+}
+
+max_wrong_names_one_file() {
+  local subject="$1"
+  local group="$2"
+  local file="$3"
+  awk -F';' -v g="$group" '
+    $1 == g {
+      c = ($4 + 0)
+      if (c > max_q) max_q = c
+      corr[$2] += c
+      cnt[$2]++
+    }
+    END {
+      total = max_q
+      max = 0
+      for (s in corr) {
+        wrong = cnt[s] * total - corr[s]
+        a[s] = wrong
+        if (wrong > max) max = wrong
+      }
+      for (s in a) if (a[s] == max) printf "%s ", s
+    }
+  ' "$file" | sed 's/ $//'
 }
 
 max_wrong_value_one_file() {
-  local subject="$1" group="$2" test_file="$3" total
-  total="$(get_total_questions "$subject")"
-  awk -F';' -v g="$group" -v T="$total" '
-    $1==g { wrong[$2]+= (T>0 ? (T-($4+0)) : -($4+0)) }
-    END {
-      for(n in wrong) if (wrong[n]>max) max=wrong[n]
-      print (max+0)
-    }
-  ' "$test_file"
-}
-
-max_correct_names_all_tests() {
-  local subject="$1" group="$2"
-  local dir
-  dir="$(get_subject_tests_dir "$subject")"
+  local subject="$1"
+  local group="$2"
+  local file="$3"
   awk -F';' -v g="$group" '
-    $1==g { corr[$2]+=($4+0) }
-    END {
-      for(n in corr) if (corr[n]>max) max=corr[n]
-      for(n in corr) if (corr[n]==max) printf "%s (%d)\n", n, corr[n]
+    $1 == g {
+      c = ($4 + 0)
+      if (c > max_q) max_q = c
+      corr[$2] += c
+      cnt[$2]++
     }
-  ' "$dir"/*
-}
-
-max_wrong_names_all_tests() {
-  local subject="$1" group="$2" total
-  local dir
-  dir="$(get_subject_tests_dir "$subject")"
-  total="$(get_total_questions "$subject")"
-  awk -F';' -v g="$group" -v T="$total" '
-    $1==g { wrong[$2]+= (T>0 ? (T-($4+0)) : -($4+0)) }
     END {
-      for(n in wrong) if (wrong[n]>max) max=wrong[n]
-      for(n in wrong) if (wrong[n]==max) print n
+      total = max_q
+      max = 0
+      for (s in corr) {
+        wrong = cnt[s] * total - corr[s]
+        if (wrong > max) max = wrong
+      }
+      print max
     }
-  ' "$dir"/*
+  ' "$file"
 }
 
 group_exists_in_subject() {
-  local subject="$1" group="$2"
-  local dir
-  dir="$(get_subject_tests_dir "$subject")"
-  [[ -d "$dir" ]] || return 1
-  local f
-  for f in "$dir"/*; do
-    [[ -f "$f" ]] || continue
-    awk -F';' -v g="$group" '$1==g{found=1; exit} END{exit(found?0:1)}' "$f" && return 0
-  done
-  return 1
-}
-
-max_correct_value_all_tests() {
-  local subject="$1" group="$2"
+  local subject="$1"
+  local group="$2"
   local dir
   dir="$(get_subject_tests_dir "$subject")"
   awk -F';' -v g="$group" '
-    $1==g { corr[$2] += ($4+0) }
-    END {
-      for (n in corr) if (corr[n] > max) max = corr[n]
-      print (max+0)
+    $1 == g { found=1; exit 0 }
+    END { if (!found) exit 1 }
+  ' "$dir"/TEST-* 2>/dev/null
+}
+
+max_correct_names_all_tests() {
+  local subject="$1"
+  local group="$2"
+  local dir
+  dir="$(get_subject_tests_dir "$subject")"
+  awk -F';' -v g="$group" '
+    $1 == g && ($5 + 0) > 2 {
+      a[$2] += ($4 + 0)
     }
-  ' "$dir"/*
+    END {
+      max = 0
+      for (s in a) if (a[s] > max) max = a[s]
+      for (s in a) if (a[s] == max) printf "%s ", s
+    }
+  ' "$dir"/TEST-* 2>/dev/null | sed 's/ $//'
+}
+
+max_correct_value_all_tests() {
+  local subject="$1"
+  local group="$2"
+  local dir
+  dir="$(get_subject_tests_dir "$subject")"
+  awk -F';' -v g="$group" '
+    $1 == g && ($5 + 0) > 2 {
+      a[$2] += ($4 + 0)
+    }
+    END {
+      max = 0
+      for (s in a) if (a[s] > max) max = a[s]
+      print max
+    }
+  ' "$dir"/TEST-* 2>/dev/null
+}
+
+max_wrong_names_all_tests() {
+  local subject="$1"
+  local group="$2"
+  local dir
+  dir="$(get_subject_tests_dir "$subject")"
+  awk -F';' -v g="$group" '
+    $1 == g {
+      c = ($4 + 0)
+      if (c > max_q) max_q = c
+      corr[$2] += c
+      cnt[$2]++
+    }
+    END {
+      total = max_q
+      max = 0
+      for (s in corr) {
+        wrong = cnt[s] * total - corr[s]
+        a[s] = wrong
+        if (wrong > max) max = wrong
+      }
+      for (s in a) if (a[s] == max) printf "%s ", s
+    }
+  ' "$dir"/TEST-* 2>/dev/null | sed 's/ $//'
 }
 
 max_wrong_value_all_tests() {
-  local subject="$1" group="$2" total
+  local subject="$1"
+  local group="$2"
   local dir
   dir="$(get_subject_tests_dir "$subject")"
-  total="$(get_total_questions "$subject")"
-  awk -F';' -v g="$group" -v T="$total" '
-    $1==g { wrong[$2] += (T>0 ? (T-($4+0)) : -($4+0)) }
-    END {
-      for (n in wrong) if (wrong[n] > max) max = wrong[n]
-      print (max+0)
+  awk -F';' -v g="$group" '
+    $1 == g {
+      c = ($4 + 0)
+      if (c > max_q) max_q = c
+      corr[$2] += c
+      cnt[$2]++
     }
-  ' "$dir"/*
+    END {
+      total = max_q
+      max = 0
+      for (s in corr) {
+        wrong = cnt[s] * total - corr[s]
+        if (wrong > max) max = wrong
+      }
+      print max
+    }
+  ' "$dir"/TEST-* 2>/dev/null
 }
