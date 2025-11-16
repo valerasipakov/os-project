@@ -92,17 +92,21 @@ TEST_NAME="$(trim "$TEST_NAME")"
 ACTION="$(trim "$ACTION")"
 
 if [[ -z "$GROUP" ]]; then
-  read -rp "Введите номер группы: " GROUP
-  GROUP="$(trim "$GROUP")"
+  echo "Необходимо указать флаг --group"
+  usage
+  exit 1
 fi
 
 if [[ -z "$SUBJECT" ]]; then
-  read -rp "Введите название предмета: " SUBJECT
-  SUBJECT="$(trim "$SUBJECT")"
+  echo "Необходимо указать флаг --subject"
+  usage
+  exit 1
 fi
 
 if [[ -z "$ACTION" ]]; then
-  ACTION="both"
+  echo "Необходимо указать флаг --action"
+  usage
+  exit 1
 fi
 
 case "$ACTION" in
@@ -110,6 +114,7 @@ case "$ACTION" in
     ;;
   *)
     echo "Некорректное значение --action: $ACTION"
+    usage
     exit 1
     ;;
 esac
