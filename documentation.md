@@ -236,7 +236,7 @@ src/tests/run_test.sh
 Через docker:
 
 ```text
-docker build .
+docker build -t mytests .
 docker run --rm --name mytests-run mytests
 ```
 
