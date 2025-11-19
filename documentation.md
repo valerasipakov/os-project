@@ -229,8 +229,8 @@ avg = sum(оценок) / count(оценок)
 Запускаются через pytest или docker
 
 Через pytest:
-```text
-pytest
+```bash
+src/tests/run_test.sh
 ```
 
 Через docker:
